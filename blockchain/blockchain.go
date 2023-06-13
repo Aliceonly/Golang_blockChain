@@ -1,49 +1,92 @@
 package blockchain
 
 import (
-	"bytes"
+	"encoding/gob"
+	"errors"
 	"fmt"
-	"time"
 )
 
-// Blockchain represents a blockchain data structure.
+func init() {
+	gob.Register(&Block{})
+	gob.Register(&Transaction{})
+	// 将此行添加到其他结构体注册之间
+}
+
+const genesisCoinbaseData = "The Times 03/Jan/2009 Chancellor on brink of second bailout for banks"
+
 type Blockchain struct {
 	Blocks []*Block
 }
 
-// NewBlockchain creates a new blockchain with the genesis block.
 func NewBlockchain() *Blockchain {
-	genesisBlock := NewBlock("Genesis Block", []byte{})
-	return &Blockchain{[]*Block{genesisBlock}}
+	genesisBlock := createGenesisBlock()
+	bc := &Blockchain{Blocks: []*Block{genesisBlock}}
+	return bc
 }
 
-// AddBlock adds a new block to the blockchain.
-func (bc *Blockchain) AddBlock(data string) {
-	prevBlock := bc.Blocks[len(bc.Blocks)-1]
-	newBlock := NewBlock(data, prevBlock.Hash)
+func createGenesisBlock() *Block {
+	coinbase := NewCoinbaseTransaction("GenesisPublicKey")
+	return NewBlock(0, "", []Transaction{*coinbase}, 0)
+}
+
+func NewCoinbaseTransaction(address string) *Transaction {
+	txin := TXInput{Txid: " ", OutputIdx: -1, Signature: "nil"}
+	txout := TXOutput{Value: 10000, PubKey: string(address)}
+	tx0 := Transaction{ID: "nil", Inputs: []TXInput{txin}, Outputs: []TXOutput{txout}}
+	return &tx0
+}
+
+func (bc *Blockchain) AddBlock(newBlock *Block) error {
+	// 验证新区块
+	if err := bc.IsValidNewBlock(newBlock); err != nil {
+		return err
+	}
+
 	bc.Blocks = append(bc.Blocks, newBlock)
+	return nil
 }
 
-func (bc *Blockchain) IsBlockValid(block, prevBlock *Block) bool {
-	if block == nil || prevBlock == nil {
-		return false
+func (bc *Blockchain) IsValidNewBlock(newBlock *Block) error {
+	previousBlock := bc.Blocks[len(bc.Blocks)-1]
+
+	// 验证索引
+	if newBlock.Index != previousBlock.Index+1 {
+		return errors.New("Invalid block index")
 	}
-	if !bytes.Equal(prevBlock.Hash, block.PrevHash) {
-		return false
+
+	// 验证前一个哈希
+	if newBlock.PrevHash != previousBlock.Hash {
+		return errors.New("Invalid previous block hash")
 	}
-	if !bytes.Equal(NewBlock(string(block.Data), []byte{}).Hash, block.Hash) {
-		return false
+
+	// 验证新哈希
+	if newBlock.Hash != newBlock.calculateHash() {
+		return errors.New("Invalid block hash")
 	}
-	return true
+
+	// 验证交易
+	for i, tx := range newBlock.Transactions {
+		if !bc.IsValidTransaction(&tx) {
+			return fmt.Errorf("Invalid transaction at index %d", i)
+		}
+	}
+
+	return nil
 }
 
-// Print prints the contents of the blockchain.
-func (bc *Blockchain) Print() {
-	for _, block := range bc.Blocks {
-		fmt.Printf("Hash: %x\n", block.Hash)
-		fmt.Printf("Prev Hash: %x\n", block.PrevHash)
-		fmt.Printf("Data: %s\n", block.Data)
-		fmt.Printf("Timestamp: %v\n", time.Unix(block.Timestamp, 0))
-		fmt.Println()
+// func (bc *Blockchain) IsValidTransaction(tx *Transaction) bool {
+// 	// 这里您可以添加验证交易的逻辑，稍后我们会更详细地讨论这部分
+// 	return true
+// }
+
+func (bc *Blockchain) GetChainInfo() (int64, []*Block) {
+	return int64(len(bc.Blocks)), bc.Blocks
+}
+
+func (bc *Blockchain) GetBlock(index int64) (*Block, error) {
+	if index < 0 || index >= int64(len(bc.Blocks)) {
+		return nil, errors.New("Block index out of range")
 	}
+
+	return bc.Blocks[index], nil
 }

@@ -1,60 +1,39 @@
 package blockchain
 
 import (
-	"bytes"
 	"crypto/sha256"
-	"encoding/gob"
-	"log"
+	"encoding/hex"
 	"strconv"
 	"time"
 )
 
-// Block represents a block in the blockchain.
 type Block struct {
-	Timestamp int64
-	Data      []byte
-	PrevHash  []byte
-	Hash      []byte
+	Index        int64
+	Timestamp    int64
+	PrevHash     string
+	Hash         string
+	Nonce        int64
+	Transactions []Transaction
 }
 
-// NewBlock creates a new block.
-func NewBlock(data string, prevHash []byte) *Block {
+func NewBlock(index int64, prevHash string, transactions []Transaction, nonce int64) *Block {
 	block := &Block{
-		Timestamp: time.Now().Unix(),
-		Data:      []byte(data),
-		PrevHash:  prevHash,
-		Hash:      []byte{},
+		Index:        index,
+		Timestamp:    time.Now().Unix(),
+		PrevHash:     prevHash,
+		Hash:         "",
+		Nonce:        nonce,
+		Transactions: transactions,
 	}
-	block.SetHash()
+	pow := NewProofOfWork(block)
+	nonce, hash := pow.Run()
+	block.Hash = hash
+	block.Nonce = nonce
 	return block
 }
 
-// SetHash sets the hash for the block.
-func (b *Block) SetHash() {
-	timestamp := []byte(strconv.FormatInt(b.Timestamp, 10))
-	headers := bytes.Join([][]byte{b.PrevHash, b.Data, timestamp}, []byte{})
-	hash := sha256.Sum256(headers)
-	b.Hash = hash[:]
-}
-
-// Serialize serializes the block into a byte array.
-func (b *Block) Serialize() []byte {
-	var result bytes.Buffer
-	encoder := gob.NewEncoder(&result)
-	err := encoder.Encode(b)
-	if err != nil {
-		log.Panic(err)
-	}
-	return result.Bytes()
-}
-
-// DeserializeBlock deserializes a byte array into a block.
-func DeserializeBlock(d []byte) *Block {
-	var block Block
-	decoder := gob.NewDecoder(bytes.NewReader(d))
-	err := decoder.Decode(&block)
-	if err != nil {
-		log.Panic(err)
-	}
-	return &block
+func (b *Block) calculateHash() string {
+	hashData := strconv.FormatInt(b.Index, 16) + strconv.FormatInt(b.Timestamp, 16) + b.PrevHash + strconv.FormatInt(b.Nonce, 16)
+	hashBytes := sha256.Sum256([]byte(hashData))
+	return hex.EncodeToString(hashBytes[:])
 }
